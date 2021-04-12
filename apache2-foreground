@@ -12,7 +12,7 @@ if test -f "$APACHE_ENVVARS"; then
 	. "$APACHE_ENVVARS"
 fi
 
-/var/run/apache-laravel-cron &
+/var/run/apache-logrotate-cron &
 
 echo "[INFO] Starting apache server";
 exec apache2 -DFOREGROUND
