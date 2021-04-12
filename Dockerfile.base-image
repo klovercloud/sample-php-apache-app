@@ -1,0 +1,103 @@
+# *** Apache Log Rotate Cron Process *** #
+FROM klovercloud/apache-logrotate-cron:v1.0.0 as apachelogrotatecron
+
+
+# *** This Dockerfile has been built as klovercloud/php-7.3.20-apache2-base-image:v1.0.0 *** #
+FROM php:7.3.20-apache
+
+RUN useradd -ms /bin/bash klovercloud
+
+#set our application folder as an environment variable
+ENV APP_HOME /home/klovercloud/app
+ENV TEMP_APP_HOME /home/klovercloud/tmp/app
+
+RUN mkdir -p "$TEMP_APP_HOME"
+RUN mkdir -p "$APP_HOME"
+
+#change the apache port to 8080
+ENV PORT 8080
+RUN sed -i "s/80/$PORT/g" /etc/apache2/sites-available/*.conf /etc/apache2/ports.conf
+
+RUN sed -ri -e 's!www-data!klovercloud!g' /etc/apache2/envvars
+
+#install all the system dependencies and enable PHP modules 
+RUN apt-get update && apt-get install -y \
+      libicu-dev \
+      libpq-dev \
+      libmcrypt-dev \
+      libfreetype6-dev \
+      libjpeg62-turbo-dev \
+      libpng-dev \
+      libwebp-dev \
+      libgmp-dev \
+      libldap2-dev \
+      zlib1g-dev \
+      libzip-dev \
+      openssl \
+      git \
+      zip \
+      unzip \
+      vim \
+      curl \
+    && rm -r /var/lib/apt/lists/* \
+    && docker-php-ext-configure pdo_mysql --with-pdo-mysql=mysqlnd \
+    && docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ --with-webp-dir=/usr/include/ \
+    && pecl install mcrypt-1.0.2 \
+    && docker-php-ext-enable mcrypt \
+    && docker-php-ext-install \
+      intl \
+      mbstring \
+      pdo_mysql \
+      mysqli \
+      gd \
+      gmp \
+      bcmath \
+      pcntl \
+      ldap \
+      sysvmsg \
+      exif \
+      zip \
+    && docker-php-ext-enable mysqli
+
+RUN apt-get update && apt-get install -y logrotate
+
+ENV NEW_APACHE_DOCUMENT_ROOT=$APP_HOME
+
+#change the web_root to $NEW_APACHE_DOCUMENT_ROOT folder
+RUN sed -ri -e 's!/var/www/html!${NEW_APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-enabled/*.conf
+RUN sed -ri -e 's!/var/www/html!${NEW_APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
+RUN sed -ri -e 's!/var/www/!${NEW_APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+
+# enable apache module rewrite
+RUN a2enmod rewrite
+
+# modify php.ini
+RUN rm -rf /usr/local/etc/php/php.ini-development
+RUN rm -rf /usr/local/etc/php/php.ini-production
+COPY php.ini-production /usr/local/etc/php/php.ini
+
+COPY apache2.conf /etc/apache2/apache2.conf
+RUN rm -rf /usr/local/bin/apache2-foreground
+COPY apache2-foreground /usr/local/bin/
+COPY apache2-init.sh /usr/local/bin/
+
+RUN chmod +x /usr/local/bin/apache2-foreground
+RUN sed -i 's/\r$//' /usr/local/bin/apache2-foreground
+
+RUN chmod +x /usr/local/bin/apache2-init.sh
+RUN sed -i 's/\r$//' /usr/local/bin/apache2-init.sh
+
+# modify log rotate config for apache
+COPY apache2.logrotate /etc/logrotate.d/apache2
+RUN chown -R klovercloud:klovercloud /var/log/apache2
+RUN chown -R klovercloud:klovercloud /var/lib/logrotate
+
+RUN /usr/local/bin/apache2-init.sh
+
+RUN chown -R klovercloud:klovercloud $APP_HOME
+
+COPY --from=apachelogrotatecron /app/apache-logrotate-cron /var/run/apache-logrotate-cron
+
+EXPOSE 8080
+
+
