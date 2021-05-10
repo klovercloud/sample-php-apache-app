@@ -3,7 +3,11 @@ FROM klovercloud/apache-logrotate-cron:v1.0.0 as apachelogrotatecron
 
 
 # *** This Dockerfile has been built as klovercloud/php-7.3.20-apache2-base-image:v1.0.0 *** #
-FROM php:7.3.20-apache
+FROM php:7.4-apache
+
+ENV PHP_EXT_APCU_VERSION "5.1.18"
+ENV PHP_EXT_MEMCACHED_VERSION "3.1.5"
+ENV PHP_EXT_XDEBUG_VERSION "2.9.0"
 
 RUN useradd -ms /bin/bash klovercloud
 
@@ -30,6 +34,12 @@ RUN apt-get update && apt-get install -y \
       libpng-dev \
       libwebp-dev \
       libgmp-dev \
+      libxml2-dev \
+      libxslt1-dev \
+      libmemcached-dev \
+      sendmail-bin \
+      sendmail \
+      libonig-dev \
       libldap2-dev \
       zlib1g-dev \
       libzip-dev \
@@ -39,11 +49,14 @@ RUN apt-get update && apt-get install -y \
       unzip \
       vim \
       curl \
-    && rm -r /var/lib/apt/lists/* \
+      logrotate \
     && docker-php-ext-configure pdo_mysql --with-pdo-mysql=mysqlnd \
-    && docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ --with-webp-dir=/usr/include/ \
-    && pecl install mcrypt-1.0.2 \
+    && docker-php-ext-configure gd --with-freetype=/usr/include/ --with-jpeg=/usr/include/ --with-webp=/usr/include/ \
+    && pecl install mcrypt-1.0.4 \
     && docker-php-ext-enable mcrypt \
+    && yes "" | pecl install apcu-$PHP_EXT_APCU_VERSION && docker-php-ext-enable apcu \
+    && echo "no" | pecl install memcached-$PHP_EXT_MEMCACHED_VERSION && docker-php-ext-enable memcached \
+    && yes | pecl install xdebug-$PHP_EXT_XDEBUG_VERSION && docker-php-ext-enable xdebug \
     && docker-php-ext-install \
       intl \
       mbstring \
@@ -57,9 +70,14 @@ RUN apt-get update && apt-get install -y \
       sysvmsg \
       exif \
       zip \
-    && docker-php-ext-enable mysqli
+      soap \
+      pcntl \
+      xsl \
+      intl \
+      sockets \
+    && docker-php-ext-enable mysqli \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-RUN apt-get update && apt-get install -y logrotate
 
 ENV NEW_APACHE_DOCUMENT_ROOT=$APP_HOME
 
